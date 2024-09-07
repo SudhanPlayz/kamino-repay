@@ -13,6 +13,7 @@ pub mod kamino_repay {
         flash_borrow_amount: u64,
         withdraw_amount: u64,
         flash_repay_amount: u64,
+        swap_amount: u64,
     ) -> Result<()> {
         let accounts = &ctx.remaining_accounts;
 
@@ -134,16 +135,24 @@ pub mod kamino_repay {
             &accounts[83..93].to_vec(),
         )?;
 
-        // Step 13: Jupiter swap...
+        // Step 13: Jupiter swap
+        invoke(
+            &jupiter_swap_instruction(
+                &ctx.accounts.jupiter_program.key(),
+                &accounts[93..101],
+                swap_amount,
+            ),
+            &accounts[93..101].to_vec(),
+        )?;
 
         // Step 14: Flash Repay Reserve Liquidity
         invoke(
             &flash_repay_reserve_liquidity_instruction(
                 &ctx.accounts.kamino_lending_program.key(),
-                &accounts[93..105],
+                &accounts[101..113],
                 flash_repay_amount,
             ),
-            &accounts[93..105].to_vec(),
+            &accounts[101..113].to_vec(),
         )?;
 
         Ok(())
@@ -152,8 +161,9 @@ pub mod kamino_repay {
 
 #[derive(Accounts)]
 pub struct ExecuteKaminoRepay<'info> {
-    pub associated_token_program: AccountInfo<'info>,
-    pub kamino_lending_program: AccountInfo<'info>,
+    pub associated_token_program: AccountInfo<'info>, // ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL
+    pub kamino_lending_program: AccountInfo<'info>,   // KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD
+    pub jupiter_program: AccountInfo<'info>,          // JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4
 }
 
 fn create_associated_token_account_instruction(
@@ -282,7 +292,7 @@ fn refresh_obligation_farms_for_reserve_instruction(
             AccountMeta::new_readonly(accounts[8].key(), false),
             AccountMeta::new_readonly(accounts[9].key(), false),
         ],
-        data: vec![0x5]
+        data: vec![0x5],
     }
 }
 
@@ -317,7 +327,6 @@ fn withdraw_obligation_collateral_and_redeem_reserve_collateral_instruction(
     }
 }
 
-
 fn flash_repay_reserve_liquidity_instruction(
     kamino_lending_program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -341,6 +350,32 @@ fn flash_repay_reserve_liquidity_instruction(
         ],
         data: {
             let mut data = vec![0x7];
+            data.extend_from_slice(&amount.to_le_bytes());
+            data
+        },
+    }
+}
+
+fn jupiter_swap_instruction(
+    jupiter_program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    amount: u64,
+) -> Instruction {
+    Instruction {
+        program_id: *jupiter_program_id,
+        accounts: vec![
+            // Removed the other accounts that were not essential for the basic swap functionality.
+            AccountMeta::new_readonly(accounts[0].key(), false), // Token Program
+            AccountMeta::new(accounts[1].key(), false),          // Program Authority
+            AccountMeta::new(accounts[2].key(), true),           // User Transfer Authority
+            AccountMeta::new(accounts[3].key(), false),          // Source Token Account
+            AccountMeta::new(accounts[4].key(), false),          // Destination Token Account
+            AccountMeta::new_readonly(accounts[5].key(), false), // Source Mint
+            AccountMeta::new_readonly(accounts[6].key(), false), // Destination Mint
+            AccountMeta::new_readonly(accounts[7].key(), false), // Platform Fee Account
+        ],
+        data: {
+            let mut data = vec![0x8];
             data.extend_from_slice(&amount.to_le_bytes());
             data
         },
