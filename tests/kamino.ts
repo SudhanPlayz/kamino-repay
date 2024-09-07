@@ -13,12 +13,11 @@ import {
   PROGRAM_ID,
   DEFAULT_RECENT_SLOT_DURATION_MS,
 } from "@kamino-finance/klend-sdk";
-import fs from "fs";
 import BN from "bn.js";
-//import { KaminoRepay } from "../target/types/kamino_repay";
+import { KaminoRepay } from "../target/types/kamino_repay";
 
-//const provider = anchor.AnchorProvider.env();
-//anchor.setProvider(provider);
+const provider = anchor.AnchorProvider.env();
+anchor.setProvider(provider);
 
 const MAINNET_LENDING_MARKET = new PublicKey(
   "7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF"
@@ -32,8 +31,10 @@ const KAMINO_PROGRAM = new PublicKey(
 const connection = new Connection(
   "https://mainnet.helius-rpc.com/?api-key=91acf6dc-f1f0-4db8-9763-aff8b775fa6a"
 );
+
 //@ts-ignore
-//const program = anchor.workspace.KaminoRepay as anchor.Program<KaminoRepay>;
+const program = anchor.workspace.KaminoRepay as anchor.Program<KaminoRepay>;
+
 describe("Exec Kamino", () => {
   let payer = Keypair.generate();
   const repayAmt = new BN(1 * 10 ** 9);
@@ -57,31 +58,38 @@ describe("Exec Kamino", () => {
         1_000_000,
       );
 
-      // console.log(kaminoAction.preTxnIxs); // directly send this to blockchain
-
       const allInstructions = [
         ...kaminoAction.setupIxs,
         ...kaminoAction.lendingIxs,
         ...kaminoAction.cleanupIxs,
       ];
-      console.log(__dirname)
-      fs.writeFile(__dirname+"/e.json", JSON.stringify(allInstructions, null, 4), () => {
-        console.log("done")
+
+      const kaminoIxs = allInstructions.filter((ix) =>
+        ix.programId.equals(KAMINO_PROGRAM)
+      );
+
+      // Filter unique accounts
+      const uniqueAccounts = new Map();
+      kaminoIxs.forEach((ix) => {
+        ix.keys.forEach((accountMeta) => {
+          const key = accountMeta.pubkey.toBase58();
+          if (!uniqueAccounts.has(key)) {
+            uniqueAccounts.set(key, accountMeta);
+          } else {
+            // Merge isSigner and isWritable flags
+            const existing = uniqueAccounts.get(key);
+            existing.isSigner = existing.isSigner || accountMeta.isSigner;
+            existing.isWritable = existing.isWritable || accountMeta.isWritable;
+          }
+        });
       });
+      const allAccountMetas = Array.from(uniqueAccounts.values());
 
-      // //Handling only kamino program ixs for now
-      // const kaminoIxs = allInstructions.filter((ix) =>
-      //   ix.programId.equals(KAMINO_PROGRAM)
-      // );
+      const ixDatas = kaminoIxs.map((ix) => ix.data);
 
-      // //TODO: Filter unique accounts
-      // const allAccountMetas = kaminoIxs.flatMap((ix) => ix.keys);
-
-      // const ixDatas = kaminoIxs.map((ix) => ix.data);
-
-      // // Send transaction using anchor program
+      // Send transaction using anchor program
       // const txn = await program.methods
-      //   .executeKaminoOperations({ ixDatas })
+      //   .executeKaminoRepay({ ixDatas })
       //   .accounts({
       //     kaminoFarm: FARM,
       //     kaminoProgram: KAMINO_PROGRAM,
